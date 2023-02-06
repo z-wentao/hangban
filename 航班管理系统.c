@@ -1,0 +1,363 @@
+#include<stdio.h>
+#include<string.h>
+#include<malloc.h>
+#define MaxSpace 100
+#define keylen 6
+#define RADIX_n 10
+#define RADIX_c 26
+typedef char KeyType;
+typedef struct{
+    char start[8];                    //起点
+    char end[8];                     //终点
+    char sche[8];                    //班期 
+    char time1[6];                  //起飞时间 
+    char time2[6];                  //到达时间 
+    char model[6];                 //机型 
+    int price;                         //票价 
+}InfoType;                      //航班记录类型 
+typedef struct{
+    KeyType keys[keylen];          //关键字 
+    InfoType others;        
+    int next;
+}SLNode;                                //表节点 
+typedef struct{
+    SLNode s1[MaxSpace];           //静态链表，是s1[0]为头结点
+    int keynum;                             //关键字长
+    int length;                                //当前表长
+}SLList;                                   //静态联表类型
+
+typedef int ArrType_n[RADIX_n];
+typedef int ArrType_c[RADIX_c];
+int m=0,num=0;
+
+/*本算法时按关键字keys[i]建立radix个子表，使同一个子表中记录的keys[i]相同，f[0…radix]
+
+  和e[0..radix]分别指向各子表，使同一个子表中的第一个和最后一个记录*/
+void Distribute(SLNode *s1,int i,ArrType_n f,ArrType_n e)
+{
+    int j,p;
+    for(j=0;j<RADIX_n;j++)                    /*各子表初始化*/
+    {
+        f[j]=0;
+        e[j]=0;
+    }
+    for(p=s1[0].next;p;p=s1[p].next)
+    {
+        j=s1[p].keys[i]%48;                  /*将数字字符转换成对应的数值性数字*/
+        if(!f[j])   f[j]=p;
+        else s1[e[j]].next=p;
+        e[j]=p;                              /*将p指向的结点插入到第j个结点*/
+    }
+}
+
+/*本算法是按关键字keys[i]从小到大将[0…radix]所指的各子表依次链接成一个链表*/
+void Collect(SLNode *s1,ArrType_n f,ArrType_n e)
+{
+    int j,t;
+    for(j=0;!f[j];j++);                      /*找到第一个非空子表*/
+    s1[0].next=f[j];                         /*sl[0].next指向第一个非空子表中的一个结点*/
+    t=e[j];
+    while(j<RADIX_n-1)
+    {
+        for(j=j+1;j<RADIX_n-1 && !f[j];j++); /*找下一个非空子表*/
+        if(f[j])                             /*连接两个非空字表*/
+        {
+            s1[t].next=f[j];
+            t=e[j];
+        }
+    }
+    s1[t].next=0;                           /*t指向最后一个非空子表*/
+}
+
+void Distribute_c(SLNode *s1,int i,ArrType_c f,ArrType_c e)
+{
+    int j,p;
+    for(j=0;j<RADIX_c;j++)
+    {
+
+        f[j]=0;
+        e[j]=0;
+    }
+    for(p=s1[0].next;p!=0;p=s1[p].next)
+    {
+        j=s1[p].keys[i]%65;
+        if(!f[j])  f[j]=p;
+        else s1[e[j]].next=p;
+        e[j]=p;
+    }
+}
+
+void Collect_c(SLNode *s1,ArrType_c f,ArrType_c e)
+{
+    int j,t;
+    for(j=0;!f[j];j++);
+    s1[0].next=f[j];
+    t=e[j];
+    while(j<RADIX_c-1)
+    {
+        for(j=j+1;j<RADIX_c-1 && !f[j];j++);
+        if(f[j])
+        {
+            s1[t].next=f[j];
+            t=e[j];
+        }
+    }
+    s1[t].next=0;
+}
+
+/*本算法是按关键字从低位到高位依次对个关键字进行分配和收集，分两段实现：其中RadixSort方法通过调用前面的分配函数和收集函数来从最后一个关键字开始进行整理。*/
+
+
+void RadixSort(SLList *L)
+{
+    int i;
+    ArrType_n fn,en;
+    ArrType_c fc,ec;
+    for(i=0;i<L->length;i++)
+        L->s1[i].next=i+1;
+    L->s1[L->length].next=0;                  /*将改造为静态链表*/
+    for(i=L->keynum-1;i>=2;i--)            /*按最低位优先依次对各关键字进行分配和收集*/
+    {
+        Distribute(L->s1,i,fn,en);
+        Collect(L->s1,fn,en);
+    }
+    for(i=1;i>=0;i--)
+    {
+        Distribute_c(L->s1,i,fc,ec);
+        Collect_c(L->s1,fc,ec);
+    }
+}
+
+void Arrange(SLList *L)
+{
+    int p,q,i;
+    SLNode temp;
+    p=L->s1[0].next;                       /*p指示第一个记录的当前位置*/
+    for(i=1;i<L->length;i++)
+    {
+        while(p<i)                                /*找到第i个记录，并用p指示其在的位子*/
+            p=L->s1[p].next;
+        q=L->s1[p].next;                      /*q指示尚未调整的表尾*/
+        if(p!=i)
+        {
+            temp=L->s1[p];
+            L->s1[p]=L->s1[i];
+            L->s1[i]=temp;
+            L->s1[i].next=p;                     /*指向被移走的记录*/
+        }
+        p=q;                               /*p指向尚未调整的表尾，为下一个准备*/
+    }
+}
+
+/*L为待查找的表，key[]为待查找的关键字，按二分查找的思想实现查找*/
+int BinSearch(SLList *L,KeyType key[])
+{
+    int low,high,mid;
+    low=1;
+    high=L->length;
+    while(low<=high)
+    {
+        mid=(low+high)/2;
+        if(strcmp(key,L->s1[mid].keys)==0)  return mid;
+        else if(strcmp(key,L->s1[mid].keys)<0)   high=mid-1;
+        else low=mid+1;
+    }
+    return 0;
+}
+
+void Display(SLList *L,int i)
+{
+    printf("航班号  起点站   终点站    航班期   起飞时间  到达时间  机型    票价\n");
+    printf("%6s,%6s,%8s,%8s,%8s,%8s,%8s,%6d\n",L->s1[i].keys,L->s1[i].others.start,L->s1[i].others.end,L->s1[i].others.sche,L->s1[i].others.time1,L->s1[i].others.time2,L->s1[i].others.model,L->s1[i].others.price);
+}
+
+
+void SeqSearch(SLList *L,KeyType key[],int i)
+{
+    int j,k,m=0;
+    for(j=1;j<=L->length;j++)
+    {
+        switch(i)
+        {
+            case 2:k=strcmp(key,L->s1[j].others.start);
+                   break;
+            case 3:k=strcmp(key,L->s1[j].others.end);
+                   break;
+            case 4:k=strcmp(key,L->s1[j].others.time1);
+                   break;
+            case 5:k=strcmp(key,L->s1[j].others.time2);
+                   break;
+        }
+        if(k==0)
+        {
+            m=1;
+            Display(L,j);
+        }
+    }
+    if(m==0)  printf("无此航班信息，可能是输入错误!\n");
+}
+
+/*对于此算法主要是注意信息长度的赋值，对于每次调用要作相应的改变。*/
+void InputData(SLList *L)
+{
+    int i,j,n;
+    char kn;
+    char yn='y';
+    num++;
+    if(num==1)
+    {
+        i=++L->length;
+    }
+    else
+    {
+        i=L->length;
+    } 
+    while(yn=='y' || yn=='Y')
+    {
+        m++;
+        n=0;
+        printf("航班号  起点站   终点站  航班期   起飞时间  到达时间  机型  票价");
+        puts("");
+        scanf("%s %s %s %s %s %s %s %d",L->s1[i].keys,L->s1[i].others.start,L->s1[i].others.end,L->s1[i].others.sche,L->s1[i].others.time1,L->s1[i].others.time2,L->s1[i].others.model,&L->s1[i].others.price);
+        scanf("%c",&kn);
+        if(m!=1)
+        {
+            for(j=1;j<i;j++)
+            {
+                if(strcmp(L->s1[i].keys,L->s1[j].keys)==0)
+                {
+                    printf("sorry,你输入的航班已经存在!\n");
+                    n=1;
+                    break;
+                }
+            }
+        }
+
+        if(n==0) i++;
+        printf("继续输入吗？y/n:"); 
+        scanf("%c", &yn);
+    }
+    L->length=i;
+    if(n==0)
+    {
+        RadixSort(L);
+        Arrange(L);
+    }
+}
+
+
+void serachcon(SLList *L,int n)
+{
+    int i=1;
+    while(i!=0)
+    {
+        char key[keylen];
+        char kl[4];
+        int k,j;
+        printf("/t*************************************\n");
+		printf("/t**********航班信息查询系统***********\n");
+    	printf("/t*************************************\n");
+  	 	printf("/t*******   1. 航 班 号         *******\n");
+  		printf("/t*******   2. 起 点 站         *******\n");
+  		printf("/t*******   3. 终 点 站         *******\n");
+  		printf("/t*******   4. 起飞时间         *******\n");
+  		printf("/t*******   5. 到达时间         *******\n");
+  		printf("/t*******   6. 显示所有航班信息 *******\n");
+        printf("/t*******   0. 退出系统         *******\n");
+        printf("/t*************************************\n");
+        printf("/t*******   请选择（0—6）      *******\n");
+        scanf("%d",&i);
+        if(i==1)
+        {
+            printf("输入要查询的航班号(区分大小写):");
+            scanf("%s",key);
+            k=BinSearch(L,key);
+            if(k==0)
+                printf("无此航班信息，可能是输入错误!\n");
+            else Display(L,k);
+        }
+        else if(i==2)
+        {
+            printf("输入要查询的航班起点站名:");
+            scanf("%s",key);
+            SeqSearch(L,key,i);
+        }
+        else if(i==3)
+        {
+            printf("输入要查询的航班终点站名:");
+            scanf("%s",key);
+            SeqSearch(L,key,i);
+        }
+        else if(i==4)
+        {        
+			printf("输入要查询的航班起飞时间:");
+            scanf("%s",kl);
+            SeqSearch(L,kl,i);
+        }
+        else if(i==5)
+        {
+            printf("输入要查询的航班到达时间:");
+            scanf("%s",kl);
+            SeqSearch(L,kl,i);
+        }
+        else if(i==6)
+        {
+            if(L->length==1)
+                printf("对不起，没有航班信息!\n");
+            else
+            {
+                printf("显示所有航班信息:\n");
+                for(j=1;j<L->length;j++)
+                {
+                    Display(L,j+1);
+                }
+            }
+        }
+        else if(i==0)
+        {
+            printf("再见!\n");
+            return ;
+        }
+        else printf("无此操作，可能是输入错误，请再输入!\n");
+    }
+}
+
+void login(SLList *L)
+{
+    char str[10];
+    int i=1;
+    printf("if you are administrator,please Login! or input  to exit !\n");
+    while(i){
+        printf("Input you username:");
+        scanf("%s",&str);
+        if(strcmp(str,"admin")==0)
+        {
+            printf("\nInput you password:");
+            scanf("%s",&str);
+            if(strcmp(str,"123456")==0)
+            {
+                serachcon(L,i);
+                break;
+            }
+            else
+                printf("you password is wrong!\n");
+        }
+        else if(strcmp(str,"exit")==0)
+        {
+            i=0;
+            serachcon(L,i);
+        }
+        else
+            printf("you username is wrong!\n");
+    }
+}
+
+int main()
+{
+    SLList *L;
+    L=(SLList *)malloc(sizeof(SLList));
+    L->keynum=6;
+    L->length=0;
+    InputData(L);
+    login(L);
+}
